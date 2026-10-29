@@ -1,8 +1,9 @@
 // process/ocr-adapters/mistral-adapter.js
 // Mistral OCR 适配器 - 保持现有逻辑
 
-const MISTRAL_FREE_TIER_INTERVAL_MS = 1000;
-const MISTRAL_FREE_TIER_MAX_RETRIES = 3;
+const MISTRAL_FREE_TIER_INTERVAL_MS = 1200;
+const MISTRAL_FREE_TIER_MAX_RETRIES = 5;
+const MISTRAL_FREE_TIER_RETRY_BASE_MS = 2000;
 
 function getMistralFreeTierLimiter() {
   if (typeof window !== 'undefined') {
@@ -270,7 +271,8 @@ class MistralOcrAdapter extends OcrAdapter {
         const retryAfter = Number(response.headers.get('Retry-After'));
         const retryDelay = Number.isFinite(retryAfter) && retryAfter > 0
           ? retryAfter * 1000
-          : MISTRAL_FREE_TIER_INTERVAL_MS;
+          : MISTRAL_FREE_TIER_RETRY_BASE_MS * (2 ** attempt);
+        console.warn(`[Mistral OCR] 收到 429，等待 ${retryDelay}ms 后重试 (${attempt + 1}/${MISTRAL_FREE_TIER_MAX_RETRIES})`);
         await this.sleep(Math.max(MISTRAL_FREE_TIER_INTERVAL_MS, retryDelay));
       }
 

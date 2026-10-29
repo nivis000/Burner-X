@@ -2084,6 +2084,12 @@ async function handleProcessClick() {
 
                             if (nextRetryCount <= MAX_RETRIES) {
                                 retryAttempts.set(fileIdentifier, nextRetryCount);
+                                const retryDelay = /(?:429|rate.?limit|rate_limited)/i.test(errorMsg)
+                                    ? Math.min(30000, 2000 * (2 ** (nextRetryCount - 1)))
+                                    : 0;
+                                if (retryDelay > 0) {
+                                    await new Promise(resolve => setTimeout(resolve, retryDelay));
+                                }
                                 pendingIndices.add(currentFileIndex);
                                 addProgressLog(`[${currentFile.name}] 处理失败: ${errorMsg}. 稍后重试 (${nextRetryCount}/${MAX_RETRIES}).`);
                             } else {
