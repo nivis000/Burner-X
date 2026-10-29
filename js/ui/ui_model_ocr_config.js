@@ -35,6 +35,19 @@
     `;
     configDiv.appendChild(baseUrlDiv);
 
+    const freeTierModeDiv = document.createElement('div');
+    const freeTierMode = localStorage.getItem('ocrMistralFreeTierMode') !== 'false';
+    freeTierModeDiv.innerHTML = `
+      <label class="flex items-start gap-2 cursor-pointer">
+        <input type="checkbox" id="mistralFreeTierMode" ${freeTierMode ? 'checked' : ''} class="mt-1 w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500">
+        <span>
+          <span class="block text-sm font-medium text-gray-700">启用 Mistral 免费层级模式（1 RPS）</span>
+          <span class="block mt-1 text-xs text-gray-500">全局串行调度所有 Mistral 请求，并在收到 429 时自动等待重试。适合免费 API 层级。</span>
+        </span>
+      </label>
+    `;
+    configDiv.appendChild(freeTierModeDiv);
+
     // 保存按钮
     const saveBtn = document.createElement('button');
     saveBtn.textContent = '保存配置';
@@ -44,6 +57,10 @@
       if (baseUrlInput) {
         const newBaseUrl = baseUrlInput.value.trim() || 'https://api.mistral.ai';
         localStorage.setItem('ocrMistralBaseUrl', newBaseUrl);
+        const freeTierModeInput = document.getElementById('mistralFreeTierMode');
+        if (freeTierModeInput) {
+          localStorage.setItem('ocrMistralFreeTierMode', freeTierModeInput.checked);
+        }
         if (typeof showNotification === 'function') {
           showNotification('Mistral OCR 配置已保存', 'success');
         }

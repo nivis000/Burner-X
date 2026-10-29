@@ -83,14 +83,24 @@ class OcrManager {
             } catch (mErr) { /* ignore migration errors */ }
           }
 
-          return { engine: 'mistral', keys: merged };
+          return {
+            engine: 'mistral',
+            keys: merged,
+            baseUrl: localStorage.getItem('ocrMistralBaseUrl') || 'https://api.mistral.ai',
+            freeTierMode: localStorage.getItem('ocrMistralFreeTierMode') !== 'false'
+          };
         } catch (e) {
           console.warn('[OCR Manager] 加载 Mistral Keys 出错，回退到 ocrMistralKeys。', e);
           const legacy = (localStorage.getItem('ocrMistralKeys') || '')
             .split('\n')
             .map(k => k.trim())
             .filter(Boolean);
-          return { engine: 'mistral', keys: legacy };
+          return {
+            engine: 'mistral',
+            keys: legacy,
+            baseUrl: localStorage.getItem('ocrMistralBaseUrl') || 'https://api.mistral.ai',
+            freeTierMode: localStorage.getItem('ocrMistralFreeTierMode') !== 'false'
+          };
         }
 
       case 'mineru':

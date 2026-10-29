@@ -1,6 +1,29 @@
 // process/ocr-adapters/mistral-adapter.js
 // Mistral OCR 适配器 - 保持现有逻辑
 
+const MISTRAL_FREE_TIER_INTERVAL_MS = 1000;
+const MISTRAL_FREE_TIER_MAX_RETRIES = 3;
+
+function getMistralFreeTierLimiter() {
+  if (typeof window !== 'undefined') {
+    if (!window.__burnerXMistralFreeTierLimiter) {
+      window.__burnerXMistralFreeTierLimiter = {
+        lastRequestAt: 0,
+        queue: Promise.resolve()
+      };
+    }
+    return window.__burnerXMistralFreeTierLimiter;
+  }
+
+  if (!getMistralFreeTierLimiter.limiter) {
+    getMistralFreeTierLimiter.limiter = {
+      lastRequestAt: 0,
+      queue: Promise.resolve()
+    };
+  }
+  return getMistralFreeTierLimiter.limiter;
+}
+
 /**
  * Mistral OCR 适配器
  * 基于现有的 processOcrResults 逻辑
@@ -11,6 +34,7 @@ class MistralOcrAdapter extends OcrAdapter {
     this.keys = config.keys || [];
     this.currentKeyIndex = 0;
     this.baseUrl = (config.baseUrl || 'https://api.mistral.ai').replace(/\/+$/, ''); // 移除尾部斜杠
+    this.freeTierMode = config.freeTierMode !== false;
   }
 
   /**
@@ -111,7 +135,7 @@ class MistralOcrAdapter extends OcrAdapter {
     formData.append('file', file);
     formData.append('purpose', 'ocr');
 
-    const response = await fetch(`${this.baseUrl}/v1/files`, {
+    const response = await this.fetchMistral(`${this.baseUrl}/v1/files`, {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${apiKey}`
@@ -139,7 +163,7 @@ class MistralOcrAdapter extends OcrAdapter {
    * @returns {Promise<string>} signed_url
    */
   async getMistralSignedUrl(fileId, apiKey) {
-    const response = await fetch(`${this.baseUrl}/v1/files/${fileId}/url`, {
+    const response = await this.fetchMistral(`${this.baseUrl}/v1/files/${fileId}/url`, {
       method: 'GET',
       headers: {
         'Authorization': `Bearer ${apiKey}`
@@ -166,7 +190,7 @@ class MistralOcrAdapter extends OcrAdapter {
    * @returns {Promise<Object>} OCR 数据
    */
   async callOcrApi(signedUrl, apiKey) {
-    const response = await fetch(`${this.baseUrl}/v1/ocr`, {
+    const response = await this.fetchMistral(`${this.baseUrl}/v1/ocr`, {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${apiKey}`,
@@ -203,7 +227,7 @@ class MistralOcrAdapter extends OcrAdapter {
     if (!fileId || !apiKey) return;
 
     try {
-      const response = await fetch(`${this.baseUrl}/v1/files/${fileId}`, {
+      const response = await this.fetchMistral(`${this.baseUrl}/v1/files/${fileId}`, {
         method: 'DELETE',
         headers: {
           'Authorization': `Bearer ${apiKey}`
@@ -216,6 +240,46 @@ class MistralOcrAdapter extends OcrAdapter {
     } catch (error) {
       console.warn('[Mistral OCR] 文件删除错误:', error);
     }
+  }
+
+  /**
+   * 统一调度 Mistral 请求。免费层级按全局 1 RPS 串行发送，并对 429 做有限重试。
+   * @param {string} url
+   * @param {RequestInit} options
+   * @returns {Promise<Response>}
+   */
+  async fetchMistral(url, options) {
+    if (!this.freeTierMode) {
+      return fetch(url, options);
+    }
+
+    const limiter = getMistralFreeTierLimiter();
+    const request = async () => {
+      for (let attempt = 0; attempt <= MISTRAL_FREE_TIER_MAX_RETRIES; attempt++) {
+        const elapsed = Date.now() - limiter.lastRequestAt;
+        if (elapsed < MISTRAL_FREE_TIER_INTERVAL_MS) {
+          await this.sleep(MISTRAL_FREE_TIER_INTERVAL_MS - elapsed);
+        }
+        limiter.lastRequestAt = Date.now();
+
+        const response = await fetch(url, options);
+        if (response.status !== 429 || attempt === MISTRAL_FREE_TIER_MAX_RETRIES) {
+          return response;
+        }
+
+        const retryAfter = Number(response.headers.get('Retry-After'));
+        const retryDelay = Number.isFinite(retryAfter) && retryAfter > 0
+          ? retryAfter * 1000
+          : MISTRAL_FREE_TIER_INTERVAL_MS;
+        await this.sleep(Math.max(MISTRAL_FREE_TIER_INTERVAL_MS, retryDelay));
+      }
+
+      throw new Error('Mistral 请求重试失败');
+    };
+
+    const queuedRequest = limiter.queue.then(request, request);
+    limiter.queue = queuedRequest.catch(() => {});
+    return queuedRequest;
   }
 
   /**

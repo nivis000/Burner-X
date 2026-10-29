@@ -20,6 +20,7 @@ class OcrSettingsManager {
       // Mistral OCR
       mistralKeys: 'ocrMistralKeys',
       mistralBaseUrl: 'ocrMistralBaseUrl',
+      mistralFreeTierMode: 'ocrMistralFreeTierMode',
       // MinerU
       mineruToken: 'ocrMinerUToken',
       mineruWorkerUrl: 'ocrMinerUWorkerUrl',
@@ -204,6 +205,7 @@ class OcrSettingsManager {
 
       if (cfg.engine === 'mistral') {
         setVal(this.elements.mistralBaseUrl, cfg.baseUrl || 'https://api.mistral.ai');
+        setChk(document.getElementById('mistralFreeTierMode'), cfg.freeTierMode !== false);
         if (Array.isArray(cfg.keys)) {
           setVal(this.elements.mistralOcrKeys, cfg.keys.join('\n'));
         }
@@ -236,6 +238,7 @@ class OcrSettingsManager {
       if (cfg.engine === 'mistral') {
         if (Array.isArray(cfg.keys)) localStorage.setItem(this.keys.mistralKeys, cfg.keys.join('\n'));
         localStorage.setItem(this.keys.mistralBaseUrl, cfg.baseUrl || 'https://api.mistral.ai');
+        localStorage.setItem(this.keys.mistralFreeTierMode, cfg.freeTierMode !== false);
       } else if (cfg.engine === 'mineru') {
         localStorage.setItem(this.keys.mineruWorkerUrl, (cfg.workerUrl || '').replace(/\/+$/, ''));
         localStorage.setItem(this.keys.mineruToken, cfg.token || '');
@@ -272,6 +275,10 @@ class OcrSettingsManager {
       }
       if (this.elements.mistralBaseUrl) {
         localStorage.setItem(this.keys.mistralBaseUrl, this.elements.mistralBaseUrl.value);
+      }
+      const mistralFreeTierMode = document.getElementById('mistralFreeTierMode');
+      if (mistralFreeTierMode) {
+        localStorage.setItem(this.keys.mistralFreeTierMode, mistralFreeTierMode.checked);
       }
 
       // MinerU
@@ -352,7 +359,7 @@ class OcrSettingsManager {
 
     // 所有输入框自动保存
     const inputIds = [
-      'mistralOcrKeys', 'mistralBaseUrl',
+      'mistralOcrKeys', 'mistralBaseUrl', 'mistralFreeTierMode',
       'mineruToken', 'mineruWorkerUrl',
       'mineruEnableOcr', 'mineruEnableFormula', 'mineruEnableTable',
       'doc2xToken', 'doc2xWorkerUrl',
@@ -502,7 +509,12 @@ class OcrSettingsManager {
             .filter(Boolean);
           const merged = (keysFromManager && keysFromManager.length > 0) ? keysFromManager : legacy;
           const baseUrl = localStorage.getItem(this.keys.mistralBaseUrl) || 'https://api.mistral.ai';
-          return { engine: 'mistral', keys: merged, baseUrl };
+          return {
+            engine: 'mistral',
+            keys: merged,
+            baseUrl,
+            freeTierMode: localStorage.getItem(this.keys.mistralFreeTierMode) !== 'false'
+          };
         } catch (e) {
           console.warn('[OCR Settings] 读取 Mistral Keys 失败，回退 legacy。', e);
           const legacy = (localStorage.getItem(this.keys.mistralKeys) || '')
@@ -510,7 +522,12 @@ class OcrSettingsManager {
             .map(k => k.trim())
             .filter(Boolean);
           const baseUrl = localStorage.getItem(this.keys.mistralBaseUrl) || 'https://api.mistral.ai';
-          return { engine: 'mistral', keys: legacy, baseUrl };
+          return {
+            engine: 'mistral',
+            keys: legacy,
+            baseUrl,
+            freeTierMode: localStorage.getItem(this.keys.mistralFreeTierMode) !== 'false'
+          };
         }
 
       case 'mineru':
